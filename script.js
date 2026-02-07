@@ -1,22 +1,32 @@
+// =====================
+// ESTADO DEL JUEGO
+// =====================
 const game = {
   players: [],
   deck: [],
   discard: [],
   turn: 0,
   round: 1,
-  phase: "draw",
+  phase: "peek",          // peek | draw | choose | discardPair
   drawnCard: null,
   lastRound: false,
-  lastCaller: null
+  lastCaller: null,
+  peekCount: 0,
+  selectedCards: []
 };
 
-// ===== SETUP =====
-
+// =====================
+// SETUP
+// =====================
 function createDeck() {
   const deck = [];
   for (let v = 1; v <= 12; v++) {
     for (let i = 0; i < 4; i++) {
-      deck.push({ value: v, known: false });
+      deck.push({
+        value: v,
+        known: false,
+        peeked: false
+      });
     }
   }
   return shuffle(deck);
@@ -38,29 +48,29 @@ function deal() {
   for (let i = 0; i < 4; i++) {
     game.players.forEach(p => p.hand.push(game.deck.pop()));
   }
-  game.players.forEach(p => {
-    p.hand[0].known = true;
-    p.hand[1].known = true;
-  });
 }
 
 function startRound() {
   game.deck = createDeck();
   game.discard = [];
+  game.turn = 0;
+  game.phase = "peek";
+  game.peekCount = 0;
+
+  game.players.forEach(p => p.hand = []);
   deal();
+
   game.discard.push(game.deck.pop());
-  game.phase = "draw";
-  log(`Ronda ${game.round}`);
   updateUI();
 }
 
-// ===== TURNO =====
-
+// =====================
+// TURNOS
+// =====================
 function drawFromDeck() {
   if (game.phase !== "draw") return;
   game.drawnCard = game.deck.pop();
   game.phase = "choose";
-  log("Elegí una carta para cambiar");
   updateUI();
 }
 
@@ -68,55 +78,106 @@ function drawFromDiscard() {
   if (game.phase !== "draw") return;
   game.drawnCard = game.discard.pop();
   game.phase = "choose";
-  log("Elegí una carta para cambiar");
   updateUI();
 }
 
 function selectCard(index) {
-  if (game.phase !== "choose") return;
-
   const p = game.players[game.turn];
-  const old = p.hand[index];
-  const card = game.drawnCard;
+  const card = p.hand[index];
 
-  p.hand[index] = card;
-  card.known = true;
+  // 👁️ FASE VER CARTAS
+  if (game.phase === "peek") {
+    if (game.peekCount >= 2 || card.peeked) return;
 
-  if (!old.known) {
-    old.known = true;
-    log(old.value < card.value ? "💥 Mala jugada" : "🔥 Jugada maestra");
-  }
-
-  game.discard.push(old);
-
-  handlePairs(p);
-
-  if (p.hand.length === 0) {
-    endRound();
+    card.known = true;
+    card.peeked = true;
+    game.peekCount++;
+    updateUI();
     return;
   }
 
+  // ♻️ DESCARTE MANUAL DE PARES
+  if (game.phase === "discardPair") {
+    if (game.selectedCards.includes(index)) return;
+
+    game.selectedCards.push(index);
+    card.known = true;
+
+    if (game.selectedCards.length === 2) {
+      resolveDiscardPair();
+    }
+    updateUI();
+    return;
+  }
+
+  // 🔁 CAMBIO NORMAL DE CARTA
+  if (game.phase !== "choose") return;
+
+  const old = p.hand[index];
+  const newCard = game.drawnCard;
+
+  p.hand[index] = newCard;
+  newCard.known = true;
+
+  if (!old.known) {
+    old.known = true;
+  }
+
+  game.discard.push(old);
   game.drawnCard = null;
-  game.phase = "end";
+  game.phase = "draw";
+
   nextTurn();
 }
 
-function handlePairs(player) {
-  const count = {};
-  player.hand.forEach(c => count[c.value] = (count[c.value] || 0) + 1);
+// =====================
+// CONFIRMAR CARTAS INICIALES
+// =====================
+function confirmPeek() {
+  const p = game.players[game.turn];
+  p.hand.forEach(c => c.known = false);
 
-  for (let v in count) {
-    if (count[v] >= 2) {
-      const toRemove = player.hand.filter(c => c.value == v).slice(0,2);
-      player.hand = player.hand.filter(c => !toRemove.includes(c));
-      log(`♻️ Par de ${v} descartado`);
-      break;
-    }
-  }
+  game.phase = "draw";
+  game.peekCount = 0;
+  updateUI();
 }
 
+// =====================
+// DESCARTE MANUAL DE PAR
+// =====================
+function startDiscardPair() {
+  if (game.phase !== "draw") return;
+  game.phase = "discardPair";
+  game.selectedCards = [];
+  updateUI();
+}
+
+function resolveDiscardPair() {
+  const p = game.players[game.turn];
+  const [a, b] = game.selectedCards;
+
+  const A = p.hand[a];
+  const B = p.hand[b];
+
+  if (A.value === B.value) {
+    p.hand = p.hand.filter((_, i) => i !== a && i !== b);
+  } else {
+    // ❌ penalización
+    p.hand.splice(a, 1);
+    p.hand.push(game.deck.pop());
+  }
+
+  p.hand.forEach(c => c.known = false);
+  game.phase = "draw";
+  game.selectedCards = [];
+  updateUI();
+}
+
+// =====================
+// TURNOS / RONDAS
+// =====================
 function nextTurn() {
-  game.turn = (game.turn + 1) % 4;
+  game.turn = (game.turn + 1) % game.players.length;
 
   if (game.lastRound && game.turn === game.lastCaller) {
     endRound();
@@ -127,31 +188,26 @@ function nextTurn() {
   updateUI();
 }
 
-// ===== ÚLTIMA RONDA =====
-
 function callLastRound() {
   if (game.round < 3 || game.lastRound) return;
   game.lastRound = true;
   game.lastCaller = game.turn;
-  log("📣 ÚLTIMA RONDA");
+  updateUI();
 }
 
-// ===== RONDA =====
-
 function endRound() {
-  log("🏁 Fin de ronda");
-
-  game.players.forEach((p,i) => {
+  game.players.forEach(p => {
     let sum = 0;
-    let tw = 0;
+    let twelves = 0;
+
     p.hand.forEach(c => {
       sum += c.value;
-      if (c.value === 12) tw++;
+      if (c.value === 12) twelves++;
     });
-    sum -= Math.min(4, tw);
+
+    sum -= Math.min(4, twelves);
     p.score += sum;
     p.hand = [];
-    log(`Jugador ${i+1} suma ${sum} (total ${p.score})`);
   });
 
   game.round++;
@@ -159,21 +215,22 @@ function endRound() {
   startRound();
 }
 
-// ===== UI =====
-
+// =====================
+// UI
+// =====================
 function updateUI() {
   document.getElementById("info").innerText =
     `Ronda ${game.round} — Turno Jugador ${game.turn + 1}`;
 
-  game.players.forEach((p,i) => {
+  game.players.forEach((p, i) => {
     const el = document.getElementById(`p${i}`);
     el.className = "player" + (i === game.turn ? " active" : "");
 
     el.innerHTML = `
-      <div>Jugador ${i+1}</div>
+      <div>Jugador ${i + 1}</div>
       <div>Puntos: ${p.score}</div>
       <div class="hand">
-        ${p.hand.map((c,idx) =>
+        ${p.hand.map((c, idx) =>
           `<div class="card ${c.known ? "face" : "back"}"
                 onclick="selectCard(${idx})">
             ${c.known ? c.value : ""}
@@ -185,16 +242,23 @@ function updateUI() {
 
   document.getElementById("discard").innerText =
     game.discard.at(-1)?.value ?? "🂠";
+
+  document.getElementById("confirmPeekBtn").style.display =
+    game.phase === "peek" && game.peekCount === 2 ? "inline-block" : "none";
 }
 
-// ===== BOTONES =====
-
+// =====================
+// BOTONES
+// =====================
 document.getElementById("deckBtn").onclick = drawFromDeck;
 document.getElementById("discardBtn").onclick = drawFromDiscard;
 document.getElementById("lastBtn").onclick = callLastRound;
+document.getElementById("confirmPeekBtn").onclick = confirmPeek;
+document.getElementById("pairBtn").onclick = startDiscardPair;
 
-// ===== START =====
-
+// =====================
+// START
+// =====================
 createPlayers();
 startRound();
 
