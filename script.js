@@ -163,23 +163,28 @@ function endRound() {
 
 function updateUI() {
   document.getElementById("info").innerText =
-    `Ronda ${game.round} — Turno Jugador ${game.turn + 1} — Fase: ${game.phase}`;
+    `Ronda ${game.round} — Turno Jugador ${game.turn + 1}`;
 
   game.players.forEach((p,i) => {
     const el = document.getElementById(`p${i}`);
-    el.innerHTML =
-      `Jugador ${i+1}<br>Puntos: ${p.score}<br>` +
-      p.hand.map((c,idx) =>
-        `<span onclick="selectCard(${idx})">${c.known ? c.value : "🂠"}</span>`
-      ).join(" ");
+    el.className = "player" + (i === game.turn ? " active" : "");
+
+    el.innerHTML = `
+      <div>Jugador ${i+1}</div>
+      <div>Puntos: ${p.score}</div>
+      <div class="hand">
+        ${p.hand.map((c,idx) =>
+          `<div class="card ${c.known ? "face" : "back"}"
+                onclick="selectCard(${idx})">
+            ${c.known ? c.value : ""}
+          </div>`
+        ).join("")}
+      </div>
+    `;
   });
 
   document.getElementById("discard").innerText =
     game.discard.at(-1)?.value ?? "🂠";
-}
-
-function log(msg) {
-  document.getElementById("log").innerText = msg;
 }
 
 // ===== BOTONES =====
