@@ -1,0 +1,29 @@
+body {
+  background: #0b3d2e;
+  color: white;
+  font-family: sans-serif;
+  text-align: center;
+}
+
+#table {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin: 20px;
+}
+
+.player {
+  background: #145a32;
+  padding: 15px;
+  border-radius: 10px;
+}
+
+#center {
+  margin-top: 20px;
+}
+
+button {
+  padding: 10px;
+  margin: 5px;
+  cursor: pointer;
+}
