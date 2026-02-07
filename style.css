@@ -1,14 +1,14 @@
 body {
   background: #0b3d2e;
   color: white;
-  font-family: sans-serif;
+  font-family: Arial;
   text-align: center;
 }
 
 #table {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+  gap: 12px;
   margin: 20px;
 }
 
@@ -16,14 +16,25 @@ body {
   background: #145a32;
   padding: 15px;
   border-radius: 10px;
+  white-space: pre-line;
 }
 
 #center {
-  margin-top: 20px;
+  margin-top: 15px;
 }
 
 button {
   padding: 10px;
-  margin: 5px;
+  margin: 4px;
   cursor: pointer;
+}
+
+#discard {
+  font-size: 28px;
+  margin-top: 10px;
+}
+
+#info {
+  font-weight: bold;
+  margin: 10px;
 }
