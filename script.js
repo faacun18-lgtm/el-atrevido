@@ -4,9 +4,13 @@ const game = {
   discard: [],
   turn: 0,
   round: 1,
+  phase: "draw",
+  drawnCard: null,
   lastRound: false,
   lastCaller: null
 };
+
+// ===== SETUP =====
 
 function createDeck() {
   const deck = [];
@@ -18,17 +22,14 @@ function createDeck() {
   return shuffle(deck);
 }
 
-function shuffle(arr) {
-  return arr.sort(() => Math.random() - 0.5);
-}
+const shuffle = arr => arr.sort(() => Math.random() - 0.5);
 
 function createPlayers() {
   game.players = [];
   for (let i = 0; i < 4; i++) {
     game.players.push({
       hand: [],
-      score: 0,
-      eliminated: false
+      score: 0
     });
   }
 }
@@ -46,114 +47,72 @@ function deal() {
 function startRound() {
   game.deck = createDeck();
   game.discard = [];
-  game.turn = game.turn % 4;
   deal();
   game.discard.push(game.deck.pop());
+  game.phase = "draw";
   log(`Ronda ${game.round}`);
   updateUI();
 }
 
-function drawDeck() {
-  const card = game.deck.pop();
-  handleCard(card, true);
+// ===== TURNO =====
+
+function drawFromDeck() {
+  if (game.phase !== "draw") return;
+  game.drawnCard = game.deck.pop();
+  game.phase = "choose";
+  log("Elegí una carta para cambiar");
+  updateUI();
 }
 
-function drawDiscard() {
-  const card = game.discard.pop();
-  handleCard(card, false);
+function drawFromDiscard() {
+  if (game.phase !== "draw") return;
+  game.drawnCard = game.discard.pop();
+  game.phase = "choose";
+  log("Elegí una carta para cambiar");
+  updateUI();
 }
 
-function handleCard(card, fromDeck) {
+function selectCard(index) {
+  if (game.phase !== "choose") return;
+
   const p = game.players[game.turn];
-
-  let index = prompt(
-    `Jugador ${game.turn + 1}: ¿qué carta cambiar? (0-${p.hand.length - 1})`
-  );
-
-  if (index === null) return;
-
-  index = Number(index);
   const old = p.hand[index];
-
-  // habilidades especiales
-  if (fromDeck && [7,8,9].includes(card.value)) {
-    if (confirm("¿Usar habilidad especial?")) {
-      useAbility(card.value);
-      game.discard.push(card);
-      nextTurn();
-      return;
-    }
-  }
+  const card = game.drawnCard;
 
   p.hand[index] = card;
   card.known = true;
 
-  // riesgo
   if (!old.known) {
     old.known = true;
-    if (old.value < card.value) {
-      log("💥 Mala jugada");
-    } else {
-      log("🔥 Jugada maestra");
-    }
+    log(old.value < card.value ? "💥 Mala jugada" : "🔥 Jugada maestra");
   }
 
   game.discard.push(old);
 
-  // descarte de pares
-  checkPairs(p);
+  handlePairs(p);
 
   if (p.hand.length === 0) {
     endRound();
     return;
   }
 
+  game.drawnCard = null;
+  game.phase = "end";
   nextTurn();
 }
 
-function checkPairs(player) {
-  const counts = {};
-  player.hand.forEach(c => {
-    counts[c.value] = (counts[c.value] || 0) + 1;
-  });
+function handlePairs(player) {
+  const count = {};
+  player.hand.forEach(c => count[c.value] = (count[c.value] || 0) + 1);
 
-  for (let v in counts) {
-    if (counts[v] >= 2) {
-      if (confirm(`¿Descartar par de ${v}?`)) {
-        player.hand = player.hand.filter(c => c.value != v);
-        break;
-      }
+  for (let v in count) {
+    if (count[v] >= 2) {
+      const toRemove = player.hand.filter(c => c.value == v).slice(0,2);
+      player.hand = player.hand.filter(c => !toRemove.includes(c));
+      log(`♻️ Par de ${v} descartado`);
+      break;
     }
   }
-}
-
-function useAbility(v) {
-  if (v === 7) {
-    const p = game.players[game.turn];
-    const i = prompt("Ver carta propia: índice");
-    if (p.hand[i]) p.hand[i].known = true;
-  }
-  if (v === 8) {
-    const t = prompt("Jugador a espiar (1-4)") - 1;
-    const i = prompt("Carta índice");
-    if (game.players[t]?.hand[i])
-      game.players[t].hand[i].known = true;
-  }
-  if (v === 9) {
-    const t = prompt("Jugador objetivo (1-4)") - 1;
-    const my = prompt("Tu carta índice");
-    const his = prompt("Carta rival índice");
-    const p = game.players[game.turn];
-    [p.hand[my], game.players[t].hand[his]] =
-      [game.players[t].hand[his], p.hand[my]];
-  }
-}
-
-function callLastRound() {
-  if (game.round < 3) return alert("Todavía no");
-  game.lastRound = true;
-  game.lastCaller = game.turn;
-  log("📣 ÚLTIMA RONDA");
 }
 
 function nextTurn() {
@@ -164,40 +123,55 @@ function nextTurn() {
     return;
   }
 
+  game.phase = "draw";
   updateUI();
 }
 
+// ===== ÚLTIMA RONDA =====
+
+function callLastRound() {
+  if (game.round < 3 || game.lastRound) return;
+  game.lastRound = true;
+  game.lastCaller = game.turn;
+  log("📣 ÚLTIMA RONDA");
+}
+
+// ===== RONDA =====
+
 function endRound() {
   log("🏁 Fin de ronda");
-  scoreRound();
+
+  game.players.forEach((p,i) => {
+    let sum = 0;
+    let tw = 0;
+    p.hand.forEach(c => {
+      sum += c.value;
+      if (c.value === 12) tw++;
+    });
+    sum -= Math.min(4, tw);
+    p.score += sum;
+    p.hand = [];
+    log(`Jugador ${i+1} suma ${sum} (total ${p.score})`);
+  });
+
   game.round++;
   game.lastRound = false;
   startRound();
 }
 
-function scoreRound() {
-  game.players.forEach((p, i) => {
-    let sum = 0;
-    let twelves = 0;
-    p.hand.forEach(c => {
-      sum += c.value;
-      if (c.value === 12) twelves++;
-    });
-    sum -= Math.min(4, twelves);
-    p.score += sum;
-    p.hand = [];
-    log(`Jugador ${i+1} suma ${sum} (total ${p.score})`);
-  });
-}
+// ===== UI =====
 
 function updateUI() {
   document.getElementById("info").innerText =
-    `Ronda ${game.round} — Turno Jugador ${game.turn + 1}`;
+    `Ronda ${game.round} — Turno Jugador ${game.turn + 1} — Fase: ${game.phase}`;
 
-  game.players.forEach((p, i) => {
-    document.getElementById(`p${i}`).innerText =
-      `Jugador ${i+1}\nPuntos: ${p.score}\n` +
-      p.hand.map(c => c.known ? c.value : "🂠").join(" ");
+  game.players.forEach((p,i) => {
+    const el = document.getElementById(`p${i}`);
+    el.innerHTML =
+      `Jugador ${i+1}<br>Puntos: ${p.score}<br>` +
+      p.hand.map((c,idx) =>
+        `<span onclick="selectCard(${idx})">${c.known ? c.value : "🂠"}</span>`
+      ).join(" ");
   });
 
   document.getElementById("discard").innerText =
@@ -208,7 +182,14 @@ function log(msg) {
   document.getElementById("log").innerText = msg;
 }
 
-// ▶️ START
+// ===== BOTONES =====
+
+document.getElementById("deckBtn").onclick = drawFromDeck;
+document.getElementById("discardBtn").onclick = drawFromDiscard;
+document.getElementById("lastBtn").onclick = callLastRound;
+
+// ===== START =====
+
 createPlayers();
 startRound();
 
